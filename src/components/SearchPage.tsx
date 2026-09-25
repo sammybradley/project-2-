@@ -8,13 +8,13 @@ import { RecentlyViewed } from "@/components/RecentlyViewed";
 import { SearchForm } from "@/components/SearchForm";
 import { EmptyState, ErrorBanner, Spinner } from "@/components/ui";
 import { apiFetch } from "@/lib/client/api";
-import { DEFAULT_SORT, SORTS, type Listing, type SearchParams, type SortOrder } from "@/lib/types";
+import { DEFAULT_SORT, SORTS, type Listing, type SearchParams, type SearchResult, type SortOrder } from "@/lib/types";
 import { toSearchQuery, validateSearch } from "@/lib/validate";
 
 // The outcome of one search request, tagged with the query and attempt it answers.
 type Outcome =
   | { key: string; attempt: number; kind: "error"; message: string }
-  | { key: string; attempt: number; kind: "results"; listings: Listing[] };
+  | { key: string; attempt: number; kind: "results"; listings: Listing[]; match: SearchResult["match"] };
 
 /**
  * Home page. The active search lives in the URL (?q=…&brand=…) so a refresh or
@@ -44,8 +44,8 @@ export function SearchPage() {
   useEffect(() => {
     if (!activeKey) return;
     let cancelled = false;
-    apiFetch<Listing[]>(`/api/search?${activeKey}`, { cache: "no-store" })
-      .then((listings) => !cancelled && setOutcome({ key: activeKey, attempt, kind: "results", listings }))
+    apiFetch<SearchResult>(`/api/search?${activeKey}`, { cache: "no-store" })
+      .then(({ listings, match }) => !cancelled && setOutcome({ key: activeKey, attempt, kind: "results", listings, match }))
       .catch((err: unknown) => {
         if (cancelled) return;
         const message = err instanceof Error ? err.message : "Search failed.";
@@ -112,8 +112,16 @@ export function SearchPage() {
           (current.listings.length === 0 ? (
             <EmptyState title="No listings match" hint="Try fewer words, a higher maximum price, or clearing the size and brand filters." />
           ) : (
-            // Keyed on the query so the marketplace selection resets with each new search.
-            <Results key={activeKey} listings={current.listings} />
+            <>
+              {current.match === "partial" && (
+                <p role="status" className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Nothing matches every word in “{active?.q}”. Showing the closest {current.listings.length === 1 ? "listing" : "listings"}{" "}
+                  instead, best matches first.
+                </p>
+              )}
+              {/* Keyed on the query so the marketplace selection resets with each new search. */}
+              <Results key={activeKey} listings={current.listings} />
+            </>
           ))}
       </section>
 

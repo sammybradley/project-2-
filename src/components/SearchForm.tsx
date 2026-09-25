@@ -15,6 +15,12 @@ const SIZE_LABELS: Record<string, string> = {
   XL: "XL (Extra large)",
   XXL: "XXL",
   "One Size": "One size",
+  "US 7": "US 7 (shoes)",
+  "US 8": "US 8 (shoes)",
+  "US 9": "US 9 (shoes)",
+  "US 10": "US 10 (shoes)",
+  "US 11": "US 11 (shoes)",
+  "US 12": "US 12 (shoes)",
 };
 
 export function SearchForm({

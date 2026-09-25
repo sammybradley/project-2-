@@ -33,6 +33,13 @@ export type SearchParams = {
   sort?: SortOrder;
 };
 
+/** What /api/search answers: the listings, and whether every word matched or only some. */
+export type SearchResult = {
+  listings: Listing[];
+  /** "all": every search word matched each listing. "partial": nothing matched every word, so these are the closest listings (most matching words first). */
+  match: "all" | "partial";
+};
+
 /** Every API route answers with one of these two envelopes. */
 export type ApiOk<T> = { ok: true; data: T };
 export type ApiErr = { ok: false; error: string };

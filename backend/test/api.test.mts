@@ -14,7 +14,7 @@ import { createServer } from "node:net";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ApiResponse, Listing, SavedListing } from "../src/lib/types.ts";
+import type { ApiResponse, Listing, SavedListing, SearchResult } from "../src/lib/types.ts";
 import { MAX_NOTE_LENGTH } from "../src/lib/types.ts";
 
 const backendRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -105,7 +105,7 @@ class Visitor {
     return this.call<{ store: string; listings: number }>("/api/health");
   }
   search(q: string, extra: Record<string, string> = {}) {
-    return this.call<Listing[]>(`/api/search?${new URLSearchParams({ q, ...extra })}`);
+    return this.call<SearchResult>(`/api/search?${new URLSearchParams({ q, ...extra })}`);
   }
   listing(id: string) {
     return this.call<Listing>(`/api/listings/${id}`);
@@ -142,6 +142,11 @@ class Visitor {
 function data<T>(r: Reply<T>): T {
   assert.equal(r.body.ok, true, `expected success, got HTTP ${r.status}: ${JSON.stringify(r.body)}`);
   return (r.body as { ok: true; data: T }).data;
+}
+
+/** The listings of a successful search. */
+function hits(r: Reply<SearchResult>): Listing[] {
+  return data(r).listings;
 }
 
 function failure<T>(r: Reply<T>, status: number): string {
@@ -183,29 +188,57 @@ test("API responses are never cached", async () => {
 /* ---------- acceptance criteria ---------- */
 
 test("AC2: “Chrome Hearts hoodie” returns relevant listings, cheapest first", async () => {
-  const results = data(await new Visitor().search("Chrome Hearts hoodie"));
+  const results = hits(await new Visitor().search("Chrome Hearts hoodie"));
   assert.ok(results.length > 0, "expected at least one result");
   for (const l of results) {
     assert.equal(l.brand, "Chrome Hearts");
-    assert.match(`${l.title} ${l.description}`, /hoodie/i);
+    // "hoodie" also matches its synonyms (sweatshirt, pullover, hooded).
+    assert.match(`${l.title} ${l.description}`, /hoodie|hoody|hooded|sweatshirt|pullover/i);
   }
+  assert.ok(results.some((l) => /hoodie/i.test(l.title)), "expected actual hoodies among the results");
   const prices = results.map((l) => l.price);
   assert.deepEqual(prices, [...prices].sort((a, b) => a - b));
 });
 
 test("search matches every word, in any field, ignoring case and a plural s", async () => {
   const v = new Visitor();
-  const a = data(await v.search("HOODIE chrome")).map((l) => l.id);
-  const b = data(await v.search("chrome hoodies")).map((l) => l.id);
+  const a = hits(await v.search("HOODIE chrome")).map((l) => l.id);
+  const b = hits(await v.search("chrome hoodies")).map((l) => l.id);
   assert.ok(a.length > 0);
   assert.deepEqual(a, b);
-  assert.deepEqual(data(await v.search("hoodie zzzznotaword")), []);
+  assert.equal(data(await v.search("hoodie")).match, "all");
+  assert.deepEqual(data(await v.search("zzzznotaword")), { listings: [], match: "all" });
+});
+
+test("synonyms: sweatshirt finds hoodies, sneakers finds shoes, gray finds grey", async () => {
+  const v = new Visitor();
+  const sweatshirts = hits(await v.search("sweatshirt"));
+  assert.ok(sweatshirts.some((l) => /hoodie/i.test(l.title)), "expected hoodies among sweatshirt results");
+  const sneakers = hits(await v.search("sneakers"));
+  assert.ok(sneakers.length > 0);
+  for (const l of sneakers) assert.match(`${l.title} ${l.description}`, /sneaker|shoe|trainer|runner/i);
+  assert.deepEqual(
+    hits(await v.search("gray hoodie")).map((l) => l.id),
+    hits(await v.search("grey hoodie")).map((l) => l.id),
+  );
+});
+
+test("when no listing matches every word, the closest ones come back marked partial", async () => {
+  const v = new Visitor();
+  const r = data(await v.search("hoodie zzzznotaword"));
+  assert.equal(r.match, "partial");
+  assert.ok(r.listings.length > 0);
+  for (const l of r.listings) assert.match(`${l.title} ${l.description}`, /hoodie|hoody|hooded|sweatshirt|pullover/i);
+  // Filters still apply to the fallback.
+  const capped = data(await v.search("hoodie zzzznotaword", { maxPrice: "100" }));
+  assert.equal(capped.match, "partial");
+  for (const l of capped.listings) assert.ok(l.price <= 100);
 });
 
 test("results can be sorted by price in either direction; unknown sorts are rejected", async () => {
   const v = new Visitor();
-  const asc = data(await v.search("hoodie", { sort: "price-asc" })).map((l) => l.price);
-  const desc = data(await v.search("hoodie", { sort: "price-desc" })).map((l) => l.price);
+  const asc = hits(await v.search("hoodie", { sort: "price-asc" })).map((l) => l.price);
+  const desc = hits(await v.search("hoodie", { sort: "price-desc" })).map((l) => l.price);
   assert.ok(asc.length > 1);
   assert.deepEqual(asc, [...asc].sort((a, b) => a - b));
   assert.deepEqual(desc, [...asc].reverse());
@@ -213,14 +246,14 @@ test("results can be sorted by price in either direction; unknown sorts are reje
 });
 
 test("AC3: brand + size + max price filters narrow the results", async () => {
-  const results = data(await new Visitor().search("hoodie", { brand: "Chrome Hearts", size: "M", maxPrice: "300" }));
+  const results = hits(await new Visitor().search("hoodie", { brand: "Chrome Hearts", size: "M", maxPrice: "300" }));
   assert.ok(results.length > 0);
   for (const l of results) {
     assert.equal(l.brand, "Chrome Hearts");
     assert.equal(l.size, "M");
     assert.ok(l.price <= 300, `${l.id} costs ${l.price}`);
   }
-  const unfiltered = data(await new Visitor().search("hoodie"));
+  const unfiltered = hits(await new Visitor().search("hoodie"));
   assert.ok(unfiltered.length > results.length, "filters should remove something");
 });
 
@@ -233,7 +266,7 @@ test("AC4/AC5: blank term and bad prices are rejected with HTTP 400", async () =
 });
 
 test("AC6/AC7: every result names its marketplace and links to the original listing", async () => {
-  const results = data(await new Visitor().search("jacket"));
+  const results = hits(await new Visitor().search("jacket"));
   assert.ok(results.length > 0);
   const marketplaces = new Set(listings.map((r) => r.marketplace));
   for (const l of results) {
@@ -367,6 +400,6 @@ test("AC11: when the store fails, every route reports an error instead of preten
     data(await v.outage(false));
   }
   // …and recovers.
-  assert.ok(data(await new Visitor().search("hoodie")).length > 0);
+  assert.ok(hits(await new Visitor().search("hoodie")).length > 0);
   assert.equal(data(await new Visitor().health()).store, "ok");
 });

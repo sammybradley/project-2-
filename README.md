@@ -32,6 +32,7 @@ npm run test:integration   # starts both apps and checks the frontend really rea
 npm run test:all       # all three
 
 npm run build          # production build of the frontend (type-checks + lints)
+npm run generate:listings   # rebuild backend/data/listings.json + public/images from the seed + catalogue
 ```
 
 Prefer separate terminals? `npm run dev:backend` in one, `npm run dev:web` in
@@ -72,7 +73,7 @@ In-memory store (backend/src/lib/store.ts): listings · saved · recently viewed
 
 | Route | What it does |
 |---|---|
-| `GET /api/search?q=&brand=&size=&maxPrice=&sort=` | Validates the query, then searches. Every word of the term must match the title, brand or description; brand/size/max price narrow it further. `sort` is `price-asc` (default) or `price-desc`. |
+| `GET /api/search?q=&brand=&size=&maxPrice=&sort=` | Validates the query, then searches. Every word of the term (or a synonym: "sweatshirt" finds hoodies, "sneakers" finds shoes) must match the title, brand or description; brand/size/max price narrow it further. If nothing matches every word, the closest listings come back marked `partial` and the page says so. `sort` is `price-asc` (default) or `price-desc`. |
 | `GET /api/listings/:id` | One listing (for the detail page). |
 | `GET /api/saved` · `POST /api/saved` · `DELETE /api/saved/:id` | This visitor's saved listings. |
 | `PATCH /api/saved/:id` `{ note }` | Attach a note (≤ 300 chars) to a saved listing; blank or `null` clears it. 404 if it isn't saved. |
@@ -86,9 +87,12 @@ and keys saved/recently-viewed rows by it. Refreshing or reopening the app in
 the same browser keeps the cookie, so the list comes back; a different browser
 gets its own list.
 
-**Storage.** The backend keeps everything in memory: the practice listings are
-loaded from `backend/data/listings.json` at start-up, and saved / recently-viewed
-rows persist across page refreshes but reset when the backend restarts. The
+**Storage.** The backend keeps everything in memory: the practice listings
+(about 400 fictional ones across 59 brands) are loaded from
+`backend/data/listings.json`, and saved / recently-viewed rows persist across
+page refreshes but reset when the backend restarts. The hand-written listings
+live in `backend/data/listings.seed.json`; `npm run generate:listings` adds the
+generated ones and writes a placeholder image per listing into `public/images`. The
 store is one file (`backend/src/lib/store.ts`) with the same async signatures a
 database-backed version would have, so plugging in real storage later doesn't
 touch the routes or the frontend.
@@ -114,6 +118,7 @@ src/components/NoteEditor.tsx  Click-to-edit note on a saved listing
 public/images/*.svg            Placeholder images the backend's image_url values point at
 next.config.ts                 The /api/* → backend rewrite
 scripts/dev.mjs                `npm run dev`: runs backend + frontend together
+scripts/generate-listings.mjs  Practice-data generator (listings + placeholder images)
 test/validate.test.mts         Unit tests for the validation rules
 test/integration/frontend-backend.test.mts  Frontend ↔ backend integration test
 
@@ -163,8 +168,8 @@ suggests every brand in the data as you type.
 `npm test` runs the frontend's validation rules (blank terms, bad prices,
 normalisation) with Node's built-in test runner.
 
-`npm run test:backend` runs the backend's 25 tests over real HTTP: the
-"Chrome Hearts hoodie" search, the brand/size/price filters, blank-term and
+`npm run test:backend` runs the backend's 27 tests over real HTTP: the
+"Chrome Hearts hoodie" search, synonyms and partial matches, the brand/size/price filters, blank-term and
 bad-price rejection (HTTP 400), marketplace + original link on every result,
 save → refresh → still saved → remove (with the visitor cookie, and a second
 "browser" that can't see the first one's list), notes, the 10-item
@@ -177,6 +182,8 @@ checks that the frontend's `/api/*` really reaches the backend: health through
 the proxy, a 400 passing through, the visitor cookie round-tripping so a save
 made through the frontend shows up in the backend's store, the page rendering
 with no mock data, and a 5xx (not a fake success) when the backend is down.
+If `npm run dev` is already running it tests those servers (and skips the
+"backend down" case, since it can't stop a server it didn't start).
 
 `npm run test:all` runs all three. `npm run build` type-checks and lints the
 frontend.

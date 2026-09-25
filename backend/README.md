@@ -2,9 +2,14 @@
 
 The API for Resale Finder, on its own: Next.js Route Handlers with an
 in-memory store. It has no pages and talks to no database. The practice
-listings are loaded from `data/listings.json` when the server starts; saved and
+listings (about 400, all fictional) come from `data/listings.json`; saved and
 recently-viewed rows live in memory, so they survive page refreshes but reset
 when the server restarts.
+
+`data/listings.seed.json` holds the hand-written listings; the rest are
+generated from a catalogue of brands and items by `npm run generate:listings`
+in the project root, which rewrites `data/listings.json` and the placeholder
+images the frontend serves.
 
 ```sh
 npm install
@@ -31,7 +36,7 @@ with a real HTTP status and `Cache-Control: no-store`.
 |---|---|
 | `GET /` · `GET /api` | Lists the endpoints. |
 | `GET /api/health` | 200 with the listing count; 503 when the store can't answer. |
-| `GET /api/search?q=&brand=&size=&maxPrice=&sort=` | Search. `q` is required; every word must match the title, brand or description. `brand` is a contains match, `size` exact, `maxPrice` an upper bound, `sort` is `price-asc` (default) or `price-desc`. Bad input → 400. |
+| `GET /api/search?q=&brand=&size=&maxPrice=&sort=` | Search. Answers `{ listings, match }`. `q` is required; every word (or a synonym – "sweatshirt" finds hoodies, "sneakers" finds shoes, "gray" finds grey) must match the title, brand or description. If nothing matches every word, the closest listings come back with `match: "partial"` (most matching words first). `brand` is a contains match, `size` exact, `maxPrice` an upper bound, `sort` is `price-asc` (default) or `price-desc`. Bad input → 400. |
 | `GET /api/listings/:id` | One listing; 404 if unknown. |
 | `GET /api/brands` | Every brand in the data, A–Z. |
 | `GET /api/saved` · `POST /api/saved {listingId}` · `DELETE /api/saved/:id` | This visitor's saved listings (POST answers 201). |
@@ -75,9 +80,10 @@ src/app/route.ts, src/app/api/route.ts   GET / and GET /api (endpoint index)
 src/app/api/**/route.ts                  The Route Handlers
 src/app/api/[...rest]/route.ts           JSON 404 for unknown /api paths
 src/lib/api.ts                           Response envelope, error handling, request log, visitor cookie
-src/lib/store.ts                         All data access (in-memory); swap this file for a database later
+src/lib/store.ts                         All data access (in-memory), search synonyms + fallback; swap this file for a database later
 src/lib/listings-data.ts                 data/listings.json → Listing rows (adds image_url and listing_url)
 src/lib/validate.ts                      Search validation (blank term, bad price, unknown sort)
-test/api.test.mts                        Tests over HTTP: acceptance criteria, cookie, errors, outage
+test/api.test.mts                        Tests over HTTP: acceptance criteria, synonyms, partial matches, cookie, errors, outage
+../scripts/generate-listings.mjs         Builds data/listings.json (+ images) from data/listings.seed.json and a catalogue
 test/validate.test.mts                   Unit tests for the validation rules
 ```

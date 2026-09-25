@@ -8,17 +8,15 @@
 
 import { HttpError, StoreUnavailable } from "@/lib/errors";
 import { loadListings } from "@/lib/listings-data";
-import { DEFAULT_SORT, MAX_NOTE_LENGTH, type Listing, type SavedListing, type SearchParams } from "@/lib/types";
+import { DEFAULT_SORT, MAX_NOTE_LENGTH, type Listing, type SavedListing, type SearchParams, type SearchResult } from "@/lib/types";
 
 export const RECENT_LIMIT = 10;
-const SEARCH_LIMIT = 60;
+const SEARCH_LIMIT = 200;
 
 type SavedRow = { visitorId: string; listingId: string; seq: number; note: string | null };
 type ViewRow = { visitorId: string; listingId: string; seq: number };
 
 type Db = {
-  listings: Listing[];
-  byId: Map<string, Listing>;
   saved: SavedRow[];
   recent: ViewRow[];
   /** Monotonic counter: newer rows get bigger numbers (clock ticks can collide). */
@@ -27,28 +25,26 @@ type Db = {
   outage: boolean;
 };
 
-// Kept on globalThis so `next dev` re-compiling this module doesn't wipe the data.
+// The listings are module-level, so editing data/listings.json (or re-running
+// the generator) shows up on the next request in `next dev` – no restart needed.
+const LISTINGS: Listing[] = loadListings();
+const BY_ID = new Map(LISTINGS.map((l) => [l.id, l]));
+
+// Saved and recently-viewed rows live on globalThis, so `next dev` re-compiling
+// this module doesn't wipe what visitors have saved.
 const g = globalThis as typeof globalThis & { __resaleFinderStore?: Db };
 
 function rawDb(): Db {
-  if (!g.__resaleFinderStore) {
-    const listings = loadListings();
-    g.__resaleFinderStore = {
-      listings,
-      byId: new Map(listings.map((l) => [l.id, l])),
-      saved: [],
-      recent: [],
-      seq: 0,
-      outage: false,
-    };
-  }
+  if (!g.__resaleFinderStore) g.__resaleFinderStore = { saved: [], recent: [], seq: 0, outage: false };
   return g.__resaleFinderStore;
 }
 
-function db(): Db {
+type Store = Db & { listings: Listing[]; byId: Map<string, Listing> };
+
+function db(): Store {
   const store = rawDb();
   if (store.outage) throw new StoreUnavailable("The store is unavailable (simulated outage).");
-  return store;
+  return Object.assign(store, { listings: LISTINGS, byId: BY_ID });
 }
 
 /** Development only (see /api/dev/outage): make every query fail, or recover. */
@@ -60,37 +56,109 @@ export function isOutage(): boolean {
   return rawDb().outage;
 }
 
-const lower = (s: string | null | undefined) => (s ?? "").toLowerCase();
-
 /* ---------- Listings ---------- */
 
-export async function searchListings(p: SearchParams): Promise<Listing[]> {
-  const store = db();
+// Words people type that the listings may phrase differently. A search word
+// matches a listing if the word itself or any of its synonyms appears in the
+// title, brand or description. Keys and values are singular (see singular()).
+const SYNONYMS: Record<string, string[]> = {
+  hoodie: ["hoody", "hooded", "sweatshirt", "pullover"],
+  hoody: ["hoodie", "hooded"],
+  sweatshirt: ["hoodie", "crewneck", "pullover"],
+  crewneck: ["sweatshirt"],
+  pullover: ["hoodie", "sweatshirt"],
+  tee: ["t-shirt", "tshirt"],
+  "t-shirt": ["tee", "tshirt"],
+  tshirt: ["tee", "t-shirt"],
+  shirt: ["tee", "t-shirt"],
+  sneaker: ["shoe", "trainer", "runner"],
+  shoe: ["sneaker", "boot", "trainer", "clog", "sandal"],
+  trainer: ["sneaker", "shoe"],
+  kick: ["sneaker", "shoe"],
+  footwear: ["sneaker", "shoe", "boot"],
+  jean: ["denim"],
+  denim: ["jean"],
+  jacket: ["coat", "parka", "puffer", "windbreaker", "bomber", "overshirt"],
+  coat: ["jacket", "parka", "overcoat"],
+  puffer: ["down", "jacket"],
+  pant: ["trouser", "sweatpant", "jogger", "chino", "cargo"],
+  trouser: ["pant"],
+  jogger: ["sweatpant", "track pant"],
+  sweatpant: ["jogger"],
+  short: ["shorts"],
+  cap: ["hat"],
+  hat: ["cap", "beanie", "bucket"],
+  beanie: ["hat"],
+  sweater: ["knit", "jumper", "cardigan"],
+  jumper: ["sweater", "knit"],
+  knit: ["sweater", "jumper", "cardigan"],
+  knitwear: ["sweater", "knit", "cardigan"],
+  vintage: ["retro", "90s", "archive"],
+  retro: ["vintage", "90s"],
+  bag: ["backpack", "tote"],
+  gray: ["grey"],
+  grey: ["gray"],
+  outerwear: ["jacket", "coat", "parka"],
+  top: ["tee", "hoodie", "sweatshirt", "shirt", "sweater"],
+};
 
-  // Every word of the search term must appear somewhere in the title, brand or
-  // description, so "Chrome Hearts hoodie" finds a Chrome Hearts listing titled
-  // "Cross Patch Pullover Hoodie". A trailing "s" is dropped ("hoodies",
-  // "jackets", "Levis") – with a contains match that can only broaden results.
-  const words = p.q
+// "hoodies" → "hoodie", "Levis" → "levi". With a contains match dropping the s
+// can only broaden results, never lose them. Short words ("s", "xs") are kept.
+const singular = (w: string) => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w);
+
+const lower = (s: string | null | undefined) => (s ?? "").toLowerCase();
+
+/** Search words + everything each one may also appear as. */
+function expand(q: string): string[][] {
+  return q
     .toLowerCase()
     .split(/\s+/)
-    .map((w) => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(singular)
+    .map((w) => [w, ...(SYNONYMS[w] ?? [])]);
+}
+
+/**
+ * Search. Every word must appear (as itself or a synonym) in the title, brand or
+ * description – "Chrome Hearts hoodie" finds a Chrome Hearts listing titled
+ * "Cross Patch Pullover Hoodie". If nothing matches every word, the closest
+ * listings are returned instead (most matching words first) and the result is
+ * marked `match: "partial"` so the UI can say so. Brand, size and price filters
+ * always apply.
+ */
+export async function searchListings(p: SearchParams): Promise<SearchResult> {
+  const store = db();
+  const words = expand(p.q);
   const brand = lower(p.brand);
   const size = lower(p.size);
 
-  const results = store.listings.filter((l) => {
+  const passesFilters = (l: Listing) =>
+    (!brand || lower(l.brand).includes(brand)) &&
+    (!size || lower(l.size) === size) &&
+    (p.maxPrice === undefined || l.price <= p.maxPrice);
+
+  const matchedWords = (l: Listing) => {
     const fields = [lower(l.title), lower(l.brand), lower(l.description)];
-    if (!words.every((w) => fields.some((f) => f.includes(w)))) return false;
-    if (brand && !lower(l.brand).includes(brand)) return false;
-    if (size && lower(l.size) !== size) return false;
-    if (p.maxPrice !== undefined && l.price > p.maxPrice) return false;
-    return true;
-  });
+    return words.filter((forms) => forms.some((f) => fields.some((field) => field.includes(f)))).length;
+  };
+
+  const scored = store.listings
+    .filter(passesFilters)
+    .map((listing) => ({ listing, hits: matchedWords(listing) }))
+    .filter((s) => s.hits > 0);
 
   const direction = (p.sort ?? DEFAULT_SORT) === "price-asc" ? 1 : -1;
-  results.sort((a, b) => (a.price - b.price) * direction || a.id.localeCompare(b.id)); // stable for equal prices
-  return results.slice(0, SEARCH_LIMIT);
+  const byPrice = (a: Listing, b: Listing) => (a.price - b.price) * direction || a.id.localeCompare(b.id); // stable for equal prices
+
+  const exact = scored.filter((s) => s.hits === words.length).map((s) => s.listing);
+  if (exact.length || words.length < 2) {
+    return { listings: exact.sort(byPrice).slice(0, SEARCH_LIMIT), match: "all" };
+  }
+  const closest = scored
+    .sort((a, b) => b.hits - a.hits || byPrice(a.listing, b.listing))
+    .slice(0, SEARCH_LIMIT)
+    .map((s) => s.listing);
+  return { listings: closest, match: "partial" };
 }
 
 /** Every distinct brand in the practice data, A–Z, for the brand filter's suggestions. */
