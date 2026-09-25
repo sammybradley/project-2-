@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "test:backend": "npm --prefix backend test",
     "dev:mock": "node scripts/dev-mock.mjs",
     "build": "next build",
     "start": "next start",
