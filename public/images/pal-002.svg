@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Palace Basically A Tee Grey">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#134e4a"/><stop offset="1" stop-color="#0f766e"/></linearGradient></defs>
+  <rect width="480" height="480" fill="url(#g)"/>
+  <text x="240" y="230" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="120" font-weight="700" fill="rgba(255,255,255,0.92)">P</text>
+  <text x="240" y="300" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="rgba(255,255,255,0.85)">Palace</text>
+  <text x="240" y="420" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="rgba(255,255,255,0.7)">Basically A Tee Grey</text>
+</svg>

@@ -1,0 +1,38 @@
+// Shapes shared by the Route Handlers and the client components.
+
+export type Listing = {
+  id: string;
+  title: string;
+  brand: string;
+  price: number;
+  size: string | null;
+  image_url: string;
+  marketplace: string;
+  listing_url: string;
+  description: string | null;
+};
+
+export const SORTS = ["price-asc", "price-desc"] as const;
+export type SortOrder = (typeof SORTS)[number];
+export const DEFAULT_SORT: SortOrder = "price-asc";
+
+/** A saved listing carries the visitor's own note (null until they write one). */
+export type SavedListing = Listing & { note: string | null };
+
+export const MAX_NOTE_LENGTH = 300;
+
+export type SearchParams = {
+  q: string;
+  brand?: string;
+  maxPrice?: number;
+  size?: string;
+  /** Result order; omitted means DEFAULT_SORT. */
+  sort?: SortOrder;
+};
+
+/** Every API route answers with one of these two envelopes. */
+export type ApiOk<T> = { ok: true; data: T };
+export type ApiErr = { ok: false; error: string };
+export type ApiResponse<T> = ApiOk<T> | ApiErr;
+
+export const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "One Size"] as const;
