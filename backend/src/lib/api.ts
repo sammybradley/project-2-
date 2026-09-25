@@ -47,9 +47,10 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
   };
 }
 
-// 2xx green, 4xx yellow, 5xx red – only when writing to a real terminal.
+// 2xx green, 4xx yellow, 5xx red – only when writing to a real terminal
+// (or when the parent process asks for colour, as scripts/dev.mjs does).
 const colour = (status: number, text: string) => {
-  if (!process.stdout.isTTY) return text;
+  if (!process.stdout.isTTY && !process.env.FORCE_COLOR) return text;
   const code = status >= 500 ? 31 : status >= 400 ? 33 : 32;
   return `\x1b[${code}m${text}\x1b[0m`;
 };

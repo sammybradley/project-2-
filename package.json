@@ -3,27 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "next dev",
     "dev:backend": "npm --prefix backend run dev",
-    "test:backend": "npm --prefix backend test",
-    "dev:mock": "node scripts/dev-mock.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "generate:seed": "node scripts/generate-seed.mjs",
-    "mock:db": "node scripts/mock-supabase.mjs",
-    "check:db": "node scripts/check-supabase.mjs",
     "test": "node --test \"test/*.test.mts\"",
-    "test:e2e": "next build && node --test \"test/e2e/*.test.mts\"",
-    "test:all": "npm test && npm run test:e2e"
+    "test:backend": "npm --prefix backend test",
+    "test:integration": "node --test \"test/integration/*.test.mts\"",
+    "test:all": "npm test && npm run test:backend && npm run test:integration",
+    "postinstall": "cd backend && npm install --no-audit --no-fund"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.0",
     "next": "16.3.6",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "server-only": "^0.0.1"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
