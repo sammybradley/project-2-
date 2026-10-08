@@ -19,8 +19,11 @@ export const SORTS = ["price-asc", "price-desc"] as const;
 export type SortOrder = (typeof SORTS)[number];
 export const DEFAULT_SORT: SortOrder = "price-asc";
 
-/** A saved listing carries the visitor's own note (null until they write one). */
-export type SavedListing = Listing & { note: string | null };
+/**
+ * A saved listing carries the visitor's own note (null until they write one)
+ * and when it was saved (ISO 8601, set by the store when the row is written).
+ */
+export type SavedListing = Listing & { note: string | null; saved_at: string };
 
 export const MAX_NOTE_LENGTH = 300;
 

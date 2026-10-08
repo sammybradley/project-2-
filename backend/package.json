@@ -2,15 +2,17 @@
   "name": "resale-finder-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Resale Finder API: Next.js Route Handlers with an in-memory store (no frontend, no database).",
+  "description": "Resale Finder API: Next.js Route Handlers over Supabase (or an in-memory store when Supabase isn't configured).",
   "scripts": {
     "dev": "next dev -p 4000",
     "build": "next build",
     "start": "next start -p 4000",
     "typecheck": "tsc --noEmit",
+    "seed:supabase": "node --env-file-if-exists=.env.local scripts/seed-supabase.mjs",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"test/*.test.mts\""
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "next": "16.3.6",
     "react": "19.2.8",
     "react-dom": "19.2.8"

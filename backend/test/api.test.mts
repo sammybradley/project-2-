@@ -102,7 +102,10 @@ class Visitor {
     return { status: res.status, headers: res.headers, body: (await res.json()) as ApiResponse<T> };
   }
   health() {
-    return this.call<{ store: string; listings: number }>("/api/health");
+    return this.call<{ store: string; backend: "supabase" | "memory"; persistent: boolean; listings: number }>("/api/health");
+  }
+  session() {
+    return this.call<{ visitor: string; savedCount: number; recentCount: number; store: { kind: string; persistent: boolean; listings: number } }>("/api/session");
   }
   search(q: string, extra: Record<string, string> = {}) {
     return this.call<SearchResult>(`/api/search?${new URLSearchParams({ q, ...extra })}`);
@@ -177,6 +180,28 @@ test("GET /api/health reports the store is up and holds every practice listing",
   const h = data(await new Visitor().health());
   assert.equal(h.store, "ok");
   assert.equal(h.listings, listings.length);
+  assert.ok(h.backend === "supabase" || h.backend === "memory");
+  assert.equal(h.persistent, h.backend === "supabase");
+});
+
+test("GET /api/session reports what the store holds for this visitor, and tracks saves", async () => {
+  const v = new Visitor();
+  const before = data(await v.session());
+  assert.match(before.visitor, /^[0-9a-f]{8}$/);
+  assert.equal(before.savedCount, 0);
+  assert.equal(before.recentCount, 0);
+  assert.equal(before.store.listings, listings.length);
+
+  data(await v.save("ch-001"));
+  data(await v.view("ch-002"));
+  const after = data(await v.session());
+  assert.equal(after.visitor, before.visitor);
+  assert.equal(after.savedCount, 1);
+  assert.equal(after.recentCount, 1);
+
+  // Every saved row says when it was saved (set by the store, not the client).
+  const [saved] = data(await v.saved());
+  assert.ok(!Number.isNaN(Date.parse(saved.saved_at)), `saved_at should be a timestamp, got ${saved.saved_at}`);
 });
 
 test("API responses are never cached", async () => {

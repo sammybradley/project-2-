@@ -4,7 +4,7 @@ import Link from "next/link";
 import { NoteEditor } from "@/components/NoteEditor";
 import { SaveButton } from "@/components/SaveButton";
 import { useSaved } from "@/components/SavedProvider";
-import { MarketplaceBadge, formatPrice } from "@/components/ui";
+import { MarketplaceBadge, formatPrice, formatWhen } from "@/components/ui";
 import { recordView } from "@/lib/client/api";
 import type { Listing, SavedListing } from "@/lib/types";
 
@@ -50,6 +50,9 @@ export function ListingCard({ listing, showNote = false }: { listing: Listing; s
       </Link>
       {showNote && isSavedListing(listing) && (
         <div className="border-t border-neutral-100 px-3 py-2">
+          <p className="mb-1 text-[11px] text-neutral-500" title={listing.saved_at}>
+            Saved to the database {formatWhen(listing.saved_at)}
+          </p>
           <NoteEditor listing={listing} compact />
         </div>
       )}

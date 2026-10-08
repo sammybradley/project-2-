@@ -15,7 +15,7 @@ The project is two apps in one repo:
 | Folder | What it is | Runs on |
 |---|---|---|
 | `/` (this folder) | **Frontend** – Next.js App Router pages and React components. It has no data of its own: every screen fetches from `/api/…`. | http://localhost:3000 |
-| `backend/` | **Backend** – Next.js Route Handlers with an in-memory store. No pages, no database. Prints every request it receives with its status code. | http://localhost:4000 |
+| `backend/` | **Backend** – Next.js Route Handlers over a **Supabase (Postgres) database**. No pages. Prints every request it receives with its status code. Falls back to an in-memory store when no Supabase credentials are set. | http://localhost:4000 |
 
 The frontend's `next.config.ts` forwards every `/api/*` request to the backend
 (`BACKEND_URL`, default `http://localhost:4000`), so the browser only ever
@@ -68,7 +68,8 @@ Frontend  next.config.ts  rewrites /api/:path*  →  BACKEND_URL/api/:path*
 Backend   Route Handlers (backend/src/app/api/**)
    │
    ▼
-In-memory store (backend/src/lib/store.ts): listings · saved · recently viewed
+Store (backend/src/lib/store.ts) → Supabase Postgres: listings · saved · recently viewed
+          (backend/src/lib/store-supabase.ts; store-memory.ts when Supabase isn't configured)
 ```
 
 | Route | What it does |
@@ -79,7 +80,8 @@ In-memory store (backend/src/lib/store.ts): listings · saved · recently viewed
 | `PATCH /api/saved/:id` `{ note }` | Attach a note (≤ 300 chars) to a saved listing; blank or `null` clears it. 404 if it isn't saved. |
 | `GET /api/brands` | Every brand in the practice data, for the brand field's suggestions. |
 | `GET /api/recent` · `POST /api/recent` · `DELETE /api/recent` | The 10 most recently *opened* listings that aren't saved; `DELETE` clears the visitor's history. |
-| `GET /api/health` | 200 when the backend and its store are up, 503 (with the reason) when they aren't. |
+| `GET /api/health` | 200 when the backend and its store are up (with which store it is and a live row count), 503 (with the reason) when they aren't. |
+| `GET /api/session` | What the database holds for this browser: the visitor id prefix, how many saved and recently-viewed rows it has, and which store is running. The strip under the nav shows this. |
 
 **No accounts, but still "my" saved list.** The first time a browser calls the
 API, the backend sets an anonymous, httpOnly `rf_visitor` cookie (a random UUID)
@@ -87,15 +89,29 @@ and keys saved/recently-viewed rows by it. Refreshing or reopening the app in
 the same browser keeps the cookie, so the list comes back; a different browser
 gets its own list.
 
-**Storage.** The backend keeps everything in memory: the practice listings
-(about 400 fictional ones across 59 brands) are loaded from
-`backend/data/listings.json`, and saved / recently-viewed rows persist across
-page refreshes but reset when the backend restarts. The hand-written listings
+**Storage.** The backend stores everything in a Supabase Postgres database
+(`backend/supabase/schema.sql`: tables `listings`, `saved`, `recent`). The
+practice listings (about 400 fictional ones across 59 brands) are generated
+into `backend/data/listings.json` and loaded into the `listings` table with
+`npm run seed:supabase`; saved and recently-viewed rows are written to the
+database on every save / view, keyed by the visitor cookie, so they survive
+refreshes, new tabs, backend restarts and redeploys. The hand-written listings
 live in `backend/data/listings.seed.json`; `npm run generate:listings` adds the
-generated ones and writes a placeholder image per listing into `public/images`. The
-store is one file (`backend/src/lib/store.ts`) with the same async signatures a
-database-backed version would have, so plugging in real storage later doesn't
-touch the routes or the frontend.
+generated ones and writes a placeholder image per listing into `public/images`.
+Only the backend holds the Supabase secret key (`backend/.env.local` locally,
+the Vercel project's environment variables when deployed); the browser never
+talks to Supabase. Without those credentials the backend runs an in-memory
+store with the same interface (`backend/src/lib/store-memory.ts`), which the
+UI flags in amber.
+
+**Showing that it's really the database.** The strip under the navigation bar
+asks `GET /api/session` on every page load and again after every save or
+remove, and prints the answer: which store is running, how many listings it
+holds, and how many saved / recently-viewed rows exist for this browser's
+visitor id. Every saved card and the compare table show the `saved_at`
+timestamp the database wrote, and the Saved page says how many rows it just
+loaded. None of those numbers are kept in the page or in browser storage – the
+frontend has no state of its own beyond what it last fetched.
 
 **Honest UI.** Every route answers `{ ok: true, data }` or
 `{ ok: false, error }` with a real HTTP status and `Cache-Control: no-store`. The
@@ -125,12 +141,23 @@ test/integration/frontend-backend.test.mts  Frontend ↔ backend integration tes
 backend/                       The API – see backend/README.md
 ```
 
-### Deploying
+### Deploying (Vercel)
 
-Deploy `backend/` as its own Next.js project, then deploy the frontend with the
-environment variable `BACKEND_URL=https://<your-backend>`. Note that the
-in-memory store does not survive a backend restart or a redeploy; persistent
-storage is the next step.
+The app runs as two Vercel projects from this one repository:
+
+| Vercel project | Root directory | Environment variables |
+|---|---|---|
+| `resale-finder-api` (backend) | `backend` | `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (secret, server-side only) |
+| `resale-finder` (frontend) | `.` | `BACKEND_URL=https://<backend project>.vercel.app` |
+
+The frontend's `/api/*` rewrite proxies to the backend server-side, so the
+browser only ever sees the frontend's origin and the `rf_visitor` cookie works
+unchanged. With the Vercel CLI (`npx vercel`), from `backend/`: `vercel link`,
+`vercel env add SUPABASE_URL production`, `vercel env add SUPABASE_SECRET_KEY production`,
+`vercel deploy --prod`; then from the root: `vercel link`,
+`vercel env add BACKEND_URL production`, `vercel deploy --prod`. The database
+itself is set up once: run `backend/supabase/schema.sql` in the Supabase SQL
+Editor and `npm run seed:supabase` in `backend/` (see `backend/README.md`).
 
 ---
 

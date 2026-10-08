@@ -6,7 +6,7 @@ import { ListingGrid } from "@/components/ListingCard";
 import { NoteEditor } from "@/components/NoteEditor";
 import { SaveButton } from "@/components/SaveButton";
 import { useSaved } from "@/components/SavedProvider";
-import { EmptyState, ErrorBanner, MarketplaceBadge, Spinner, formatPrice } from "@/components/ui";
+import { EmptyState, ErrorBanner, MarketplaceBadge, Spinner, formatPrice, formatWhen } from "@/components/ui";
 import type { SavedListing } from "@/lib/types";
 
 type View = "grid" | "compare";
@@ -52,7 +52,7 @@ export function SavedPage() {
         <h1 className="text-2xl font-bold tracking-tight">Saved listings</h1>
         {status === "ready" && (
           <p className="text-sm text-neutral-600">
-            {saved.length} saved · kept on the server, so they&apos;re still here after a refresh
+            {saved.length} saved · stored in the database, not in this browser
           </p>
         )}
       </div>
@@ -75,6 +75,11 @@ export function SavedPage() {
 
       {status === "ready" && saved.length > 0 && (
         <>
+          <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+            Loaded {saved.length} saved {saved.length === 1 ? "listing" : "listings"} from the Supabase database for this browser. Nothing here is kept in
+            the page or in browser storage – refresh, close the tab or come back tomorrow and the database will still list them.
+            Oldest save: {formatWhen(saved[saved.length - 1].saved_at)}.
+          </p>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div role="group" aria-label="View" className="inline-flex rounded-md border border-neutral-300 bg-white p-0.5 text-sm">
               {(["grid", "compare"] as const).map((v) => (
@@ -139,6 +144,9 @@ function CompareTable({ listings, cheapestId }: { listings: SavedListing[]; chea
             <th scope="col" className="px-3 py-2">
               Marketplace
             </th>
+            <th scope="col" className="px-3 py-2">
+              Saved
+            </th>
             <th scope="col" className="w-64 px-3 py-2">
               Your note
             </th>
@@ -169,6 +177,9 @@ function CompareTable({ listings, cheapestId }: { listings: SavedListing[]; chea
                 <td className="px-3 py-2">{l.size ?? "—"}</td>
                 <td className="px-3 py-2">
                   <MarketplaceBadge name={l.marketplace} />
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-xs text-neutral-600" title={l.saved_at}>
+                  {formatWhen(l.saved_at)}
                 </td>
                 <td className="px-3 py-2 align-top">
                   <NoteEditor listing={l} compact />

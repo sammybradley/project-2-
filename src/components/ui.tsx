@@ -62,3 +62,10 @@ export function MarketplaceBadge({ name, className = "" }: { name: string; class
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 export const formatPrice = (n: number) => usd.format(n);
+
+const when = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
+/** "Oct 7, 2026, 3:12 PM" from an ISO timestamp (what the store returns in saved_at). */
+export const formatWhen = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : when.format(d);
+};

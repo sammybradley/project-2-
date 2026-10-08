@@ -4,7 +4,8 @@
 import raw from "../../data/listings.json";
 import type { Listing } from "@/lib/types";
 
-type RawListing = {
+/** A listing as stored – in data/listings.json and in the Supabase `listings` table. */
+export type RawListing = {
   id: string;
   title: string;
   brand: string;
@@ -25,20 +26,23 @@ const marketplaceSearch: Record<string, (q: string) => string> = {
   Mercari: (q) => `https://www.mercari.com/search/?keyword=${q}`,
 };
 
+/** A stored listing plus the two derived fields the API serves. */
+export function toListing(l: RawListing): Listing {
+  const toUrl = marketplaceSearch[l.marketplace];
+  if (!toUrl) throw new Error(`Unknown marketplace "${l.marketplace}" on listing ${l.id}`);
+  return {
+    id: l.id,
+    title: l.title,
+    brand: l.brand,
+    price: Number(l.price),
+    size: l.size ?? null,
+    image_url: `/images/${l.id}.svg`,
+    marketplace: l.marketplace,
+    listing_url: toUrl(encodeURIComponent(`${l.brand} ${l.title}`)),
+    description: l.description ?? null,
+  };
+}
+
 export function loadListings(): Listing[] {
-  return (raw as RawListing[]).map((l) => {
-    const toUrl = marketplaceSearch[l.marketplace];
-    if (!toUrl) throw new Error(`Unknown marketplace "${l.marketplace}" on listing ${l.id}`);
-    return {
-      id: l.id,
-      title: l.title,
-      brand: l.brand,
-      price: l.price,
-      size: l.size ?? null,
-      image_url: `/images/${l.id}.svg`,
-      marketplace: l.marketplace,
-      listing_url: toUrl(encodeURIComponent(`${l.brand} ${l.title}`)),
-      description: l.description ?? null,
-    };
-  });
+  return (raw as RawListing[]).map(toListing);
 }

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Nav } from "@/components/Nav";
 import { SavedProvider } from "@/components/SavedProvider";
+import { StorageStatus } from "@/components/StorageStatus";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col" suppressHydrationWarning>
         <SavedProvider>
           <Nav />
+          <StorageStatus />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
           <footer className="border-t border-neutral-200 py-4 text-center text-xs text-neutral-500">
             Practice data only — listings are fictional. Intro to AI, Project 2.

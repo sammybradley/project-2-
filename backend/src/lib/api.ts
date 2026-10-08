@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import type { ApiErr, ApiOk } from "@/lib/types";
 import { HttpError, StoreUnavailable } from "@/lib/errors";
+import { storageDescription } from "@/lib/store";
 
 export { HttpError };
 
@@ -99,9 +100,10 @@ export async function readJson<T>(req: Request): Promise<Partial<T>> {
 export function describeApi() {
   return ok({
     name: "Resale Finder API",
-    storage: "in-memory (practice listings loaded from data/listings.json; saved and recently-viewed reset when the server restarts)",
+    storage: storageDescription,
     endpoints: [
       "GET    /api/health",
+      "GET    /api/session",
       "GET    /api/search?q=&brand=&size=&maxPrice=&sort=price-asc|price-desc",
       "GET    /api/listings/:id",
       "GET    /api/brands",
